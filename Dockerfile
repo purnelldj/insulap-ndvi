@@ -1,5 +1,5 @@
 
-FROM osgeo/gdal:ubuntu-small-latest
+FROM ghcr.io/osgeo/gdal:ubuntu-small-latest
 
 ENV DEBIAN_FRONTEND=noninteractive \
 	PYTHONDONTWRITEBYTECODE=1 \
