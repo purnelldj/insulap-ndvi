@@ -1,0 +1,8 @@
+name: insulap-ndvi
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - rasterio
+  - numpy
+  - pillow
