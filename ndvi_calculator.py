@@ -5,54 +5,54 @@ from dataclasses import dataclass
 from typing import Optional, Sequence
 
 from utils import (
-    build_ndvi_geotiff_profile,
     calculate_ndvi,
     crop_raster_to_bbox,
+    find_band_paths_in_safe,
     parse_bbox,
-    write_geotiff,
     write_png_preview_rgba,
 )
-
-
-@dataclass(frozen=True)
-class NdviOutputs:
-    geotiff_path: str
-    png_preview_path: str
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Crop raster and compute NDVI (GeoTIFF + PNG preview).")
-    parser.add_argument("input", help="Input raster path (JP2/COG/GeoTIFF/etc)")
+    parser = argparse.ArgumentParser(description="Compute NDVI from a Sentinel-2 .SAFE and write a PNG preview.")
+    parser.add_argument("input", help="Input .SAFE directory path")
     parser.add_argument("--bbox", required=True, help="minx,miny,maxx,maxy")
-    parser.add_argument("--red-band", type=int, required=True, help="1-based red band index")
-    parser.add_argument("--nir-band", type=int, required=True, help="1-based NIR band index")
-    parser.add_argument("--out-tif", required=True, help="Output NDVI GeoTIFF path")
     parser.add_argument("--out-png", required=True, help="Output PNG preview path")
     parser.add_argument("--bbox-crs", default=None, help="CRS of bbox, e.g. EPSG:4326. Default: raster CRS")
     parser.add_argument("--nodata", type=float, default=-9999.0, help="Nodata value to write into NDVI GeoTIFF")
     args = parser.parse_args(argv)
 
-    crop = crop_raster_to_bbox(
-        args.input,
+    red_path, nir_path = find_band_paths_in_safe(args.input)
+
+    red_crop = crop_raster_to_bbox(
+        red_path,
         parse_bbox(args.bbox),
-        band_indexes=[args.red_band, args.nir_band],
+        band_indexes=[1],
         bbox_crs=args.bbox_crs,
     )
 
-    ndvi = calculate_ndvi(crop.bands[0], crop.bands[1], nodata_value=args.nodata)
-    profile = build_ndvi_geotiff_profile(
-        crop.src_profile,
-        height=ndvi.shape[0],
-        width=ndvi.shape[1],
-        transform=crop.transform,
-        nodata_value=args.nodata,
+    nir_crop = crop_raster_to_bbox(
+        nir_path,
+        parse_bbox(args.bbox),
+        band_indexes=[1],
+        bbox_crs=args.bbox_crs,
     )
 
-    geotiff_path = write_geotiff(args.out_tif, ndvi, profile=profile)
-    png_preview_path = write_png_preview_rgba(ndvi, nodata_value=args.nodata, output_path=args.out_png)
-    _ = NdviOutputs(geotiff_path=geotiff_path, png_preview_path=png_preview_path)
+    if red_crop.bands.shape != nir_crop.bands.shape:
+        raise ValueError(
+            "Cropped red and NIR bands have different shapes; "
+            "bbox/resolution may be mismatched between B04 and B08."
+        )
+    if red_crop.transform != nir_crop.transform:
+        raise ValueError(
+            "Cropped red and NIR bands have different geotransforms; "
+            "bbox/resolution may be mismatched between B04 and B08."
+        )
+
+    ndvi = calculate_ndvi(red_crop.bands[0], nir_crop.bands[0], nodata_value=args.nodata)
+    _ = write_png_preview_rgba(ndvi, nodata_value=args.nodata, output_path=args.out_png)
 
     return 0
 
