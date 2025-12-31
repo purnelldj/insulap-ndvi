@@ -1,4 +1,3 @@
-
 FROM ghcr.io/osgeo/gdal:ubuntu-small-3.10.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -19,4 +18,3 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages -r /app/requir
 COPY . /app
 
 CMD ["python3", "-c", "import ndvi_calculator; print('ndvi_calculator ready')"]
-
