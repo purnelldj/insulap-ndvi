@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Sequence, Tuple, Union
+from typing import Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import rasterio
@@ -14,6 +14,107 @@ from rasterio.warp import transform_bounds
 
 
 BBox = Tuple[float, float, float, float]
+
+
+def find_band_paths_in_safe(
+	safe_dir: Union[str, Path],
+	*,
+	resolution_dir_hint: str = "R10m",
+) -> Tuple[str, str]:
+	"""Find Sentinel-2 red (B04) and NIR (B08) JP2 paths in a .SAFE folder.
+
+	Expected layout (typical):
+		<SAFE>.SAFE/GRANULE/<granule_id>/IMG_DATA/R10m/*.jp2
+
+	This function is defensive and will also look for folders named "R10".
+	Returns:
+		(red_b04_path, nir_b08_path)
+	"""
+
+	safe_dir = Path(safe_dir)
+	if not safe_dir.exists():
+		raise FileNotFoundError(f"SAFE directory does not exist: {safe_dir}")
+	if not safe_dir.is_dir():
+		raise ValueError(f"Expected a SAFE directory path, got a file: {safe_dir}")
+
+	granule_root = safe_dir / "GRANULE"
+	if not granule_root.exists() or not granule_root.is_dir():
+		raise ValueError(f"Not a Sentinel .SAFE folder (missing GRANULE/): {safe_dir}")
+
+	# Collect candidates by granule, so we can detect ambiguity.
+	# Sentinel-2 SAFE commonly has exactly one granule, but not always.
+	granule_dirs = sorted([p for p in granule_root.iterdir() if p.is_dir()])
+	if not granule_dirs:
+		raise ValueError(f"No granules found under {granule_root}")
+
+	def _find_in_img_data(granule_dir: Path) -> Dict[str, Path]:
+		img_data_root = granule_dir / "IMG_DATA"
+		if not img_data_root.exists():
+			return {}
+
+		# Prefer resolution hint, but also check a couple common alternatives.
+		preferred = [resolution_dir_hint, "R10", "R10m"]
+		search_roots: list[Path] = []
+		for name in preferred:
+			p = img_data_root / name
+			if p.exists() and p.is_dir() and p not in search_roots:
+				search_roots.append(p)
+
+		# If none of the preferred roots exist, fall back to any directory with "R10" in its name.
+		if not search_roots:
+			for p in img_data_root.rglob("*"):
+				if p.is_dir() and "R10" in p.name:
+					search_roots.append(p)
+			search_roots = sorted(set(search_roots))
+
+		candidates: Dict[str, list[Path]] = {"B04": [], "B08": []}
+		for root in search_roots:
+			for jp2 in root.rglob("*.jp2"):
+				name = jp2.name.upper()
+				if "B04" in name:
+					candidates["B04"].append(jp2)
+				if "B08" in name:
+					candidates["B08"].append(jp2)
+
+		result: Dict[str, Path] = {}
+		for band in ("B04", "B08"):
+			paths = sorted(set(candidates[band]))
+			if len(paths) == 1:
+				result[band] = paths[0]
+			elif len(paths) > 1:
+				# If multiple, prefer 10m product naming if present (common: *_10m.jp2).
+				preferred_paths = [p for p in paths if "_10M" in p.name.upper()]
+				preferred_paths = sorted(preferred_paths)
+				if len(preferred_paths) == 1:
+					result[band] = preferred_paths[0]
+				else:
+					return {}
+			else:
+				return {}
+
+		return result
+
+	pairs: list[Tuple[Path, Path, Path]] = []
+	for granule_dir in granule_dirs:
+		found = _find_in_img_data(granule_dir)
+		if "B04" in found and "B08" in found:
+			pairs.append((granule_dir, found["B04"], found["B08"]))
+
+	if not pairs:
+		raise ValueError(
+			"Could not find unique B04 and B08 JP2 files under GRANULE/*/IMG_DATA. "
+			"Expected something like .../IMG_DATA/R10m/*B04*.jp2 and *B08*.jp2"
+		)
+
+	if len(pairs) > 1:
+		granules = ", ".join([p[0].name for p in pairs[:5]])
+		raise ValueError(
+			f"Multiple granules contain B04/B08 pairs ({len(pairs)} found): {granules}. "
+			"Please provide a SAFE with a single granule, or restructure input to target one granule."
+		)
+
+	_, red_path, nir_path = pairs[0]
+	return str(red_path), str(nir_path)
 
 
 @dataclass(frozen=True)
