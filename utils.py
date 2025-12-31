@@ -15,6 +15,25 @@ from rasterio.warp import transform_bounds
 BBox = Tuple[float, float, float, float]
 
 
+def find_first_safe_product_dir(parent_dir: Union[str, Path]) -> str:
+	"""Return the first `.SAFE` directory found directly under parent_dir.
+
+	The "first" SAFE is chosen deterministically by sorted directory name.
+	"""
+
+	parent_dir = Path(parent_dir)
+	if not parent_dir.exists():
+		raise FileNotFoundError(f"Input directory does not exist: {parent_dir}")
+	if not parent_dir.is_dir():
+		raise ValueError(f"Expected a directory containing .SAFE subdirectories, got a file: {parent_dir}")
+
+	safes = sorted([p for p in parent_dir.iterdir() if p.is_dir() and p.name.endswith(".SAFE")])
+	if not safes:
+		raise ValueError(f"No .SAFE subdirectories found directly under: {parent_dir}")
+
+	return str(safes[0])
+
+
 def find_band_paths_in_safe(
 	safe_dir: Union[str, Path],
 	*,

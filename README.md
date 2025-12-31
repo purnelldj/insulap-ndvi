@@ -19,7 +19,7 @@ docker run --rm insulap-ndvi
 
 ### Run NDVI inside the container (mount a local directory)
 
-This example mounts a local folder `./data` into the container at `/data`, reads a Sentinel-2 `.SAFE` folder from it, and writes outputs back into the same folder.
+This example mounts a local folder `./data` into the container at `/data`, finds the first Sentinel-2 `.SAFE` folder inside it, and writes outputs back into the same folder.
 
 ```bash
 mkdir -p .data
@@ -30,7 +30,7 @@ mkdir -p .data
 docker run --rm \
   -v "$PWD/.data:/data" \
   insulap-ndvi \
-  python3 ndvi_calculator.py /data/S2A_MSIL2A_20240728T105031_N0511_R051_T31UDQ_20240728T183146.SAFE \
+  python3 ndvi_calculator.py /data \
     --bbox "445000,5405000,450000,5410000" \
     --out-png /data/ndvi.png
 ```
@@ -55,7 +55,7 @@ micromamba activate insulap-ndvi
 Run locally:
 
 ```bash
-python ndvi_calculator.py input.tif \
+python ndvi_calculator.py ./.data \
   --bbox "500000,4100000,510000,4110000" \
   --out-png ndvi.png
 ```

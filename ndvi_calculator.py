@@ -7,6 +7,7 @@ from utils import (
     calculate_ndvi,
     crop_raster_to_bbox,
     find_band_paths_in_safe,
+    find_first_safe_product_dir,
     parse_bbox,
     write_png_preview_rgba,
 )
@@ -15,15 +16,18 @@ from utils import (
 def main(argv: Optional[Sequence[str]] = None) -> int:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Compute NDVI from a Sentinel-2 .SAFE and write a PNG preview.")
-    parser.add_argument("input", help="Input .SAFE directory path")
+    parser = argparse.ArgumentParser(
+        description="Compute NDVI from the first Sentinel-2 .SAFE found in a directory and write a PNG preview."
+    )
+    parser.add_argument("input", help="Directory containing one or more .SAFE products")
     parser.add_argument("--bbox", required=True, help="minx,miny,maxx,maxy")
     parser.add_argument("--out-png", required=True, help="Output PNG preview path")
     parser.add_argument("--bbox-crs", default=None, help="CRS of bbox, e.g. EPSG:4326. Default: raster CRS")
     parser.add_argument("--nodata", type=float, default=-9999.0, help="Nodata value to write into NDVI GeoTIFF")
     args = parser.parse_args(argv)
 
-    red_path, nir_path = find_band_paths_in_safe(args.input)
+    safe_dir = find_first_safe_product_dir(args.input)
+    red_path, nir_path = find_band_paths_in_safe(safe_dir)
 
     red_crop = crop_raster_to_bbox(
         red_path,
