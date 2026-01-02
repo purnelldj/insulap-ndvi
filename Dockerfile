@@ -4,7 +4,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 	PYTHONDONTWRITEBYTECODE=1 \
 	PYTHONUNBUFFERED=1
 
-WORKDIR /app
+RUN mkdir -p /home/worker/processor
+WORKDIR /home/worker/processor
 
 # Install pip for the base image's Python.
 RUN apt-get update \
@@ -15,6 +16,8 @@ RUN apt-get update \
 COPY requirements.txt /app/requirements.txt
 RUN python3 -m pip install --no-cache-dir --break-system-packages -r /app/requirements.txt
 
-COPY . /app
+COPY . /home/worker/processor
 
-CMD ["python3", "-c", "import ndvi_calculator; print('ndvi_calculator ready')"]
+RUN chmod +x /home/worker/processor/workflow.sh
+
+ENTRYPOINT ["/home/worker/processor/workflow.sh"]
