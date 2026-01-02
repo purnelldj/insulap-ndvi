@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Sequence, Tuple, Union
+from zipfile import ZipFile
 
 import numpy as np
 import rasterio
@@ -16,22 +17,85 @@ BBox = Tuple[float, float, float, float]
 
 
 def find_first_safe_product_dir(parent_dir: Union[str, Path]) -> str:
-	"""Return the first `.SAFE` directory found directly under parent_dir.
+	"""Return the first `.SAFE` directory found under a parent directory.
 
-	The "first" SAFE is chosen deterministically by sorted directory name.
+	Behavior:
+	- If parent_dir is itself a `.SAFE` directory, return it.
+	- Else, look for `.SAFE` directories directly under parent_dir.
+	- If none are found, look for a `.zip` directly under parent_dir, unzip it
+	  into parent_dir, then re-scan for `.SAFE` directories.
+
+	The "first" SAFE/ZIP is chosen deterministically by sorted name.
 	"""
 
 	parent_dir = Path(parent_dir)
 	if not parent_dir.exists():
-		raise FileNotFoundError(f"Input directory does not exist: {parent_dir}")
-	if not parent_dir.is_dir():
-		raise ValueError(f"Expected a directory containing .SAFE subdirectories, got a file: {parent_dir}")
+		raise FileNotFoundError(f"Input path does not exist: {parent_dir}")
+
+	# Allow callers to pass a SAFE directory directly.
+	if parent_dir.is_dir() and parent_dir.name.endswith(".SAFE"):
+		return str(parent_dir)
+
+	if parent_dir.is_file():
+		# If a zip file is passed directly, unzip next to it.
+		if parent_dir.suffix.lower() == ".zip":
+			unzipped_safe = _unzip_safe_product(parent_dir, parent_dir.parent)
+			return str(unzipped_safe)
+		raise ValueError(
+			f"Expected a directory containing .SAFE subdirectories (or a .zip file), got a file: {parent_dir}"
+		)
+
+	# 1) Prefer existing .SAFE folders.
+	safes = sorted([p for p in parent_dir.iterdir() if p.is_dir() and p.name.endswith(".SAFE")])
+	if safes:
+		return str(safes[0])
+
+	# 2) Fallback: unzip first .zip and re-scan.
+	zips = sorted([p for p in parent_dir.iterdir() if p.is_file() and p.suffix.lower() == ".zip"])
+	if not zips:
+		raise ValueError(f"No .SAFE subdirectories (or .zip files) found directly under: {parent_dir}")
+
+	_unzip_safe_product(zips[0], parent_dir)
 
 	safes = sorted([p for p in parent_dir.iterdir() if p.is_dir() and p.name.endswith(".SAFE")])
 	if not safes:
-		raise ValueError(f"No .SAFE subdirectories found directly under: {parent_dir}")
-
+		raise ValueError(
+			f"Unzipped {zips[0].name} but still found no .SAFE directory directly under: {parent_dir}"
+		)
 	return str(safes[0])
+
+
+def _unzip_safe_product(zip_path: Path, output_dir: Path) -> Path:
+	"""Unzip a Sentinel SAFE product ZIP into output_dir and return the SAFE dir.
+
+	Includes basic "zip-slip" protection by ensuring extracted paths remain under
+	output_dir.
+	"""
+
+	zip_path = Path(zip_path)
+	output_dir = Path(output_dir)
+	if not zip_path.exists() or not zip_path.is_file():
+		raise FileNotFoundError(f"ZIP file does not exist: {zip_path}")
+	if zip_path.suffix.lower() != ".zip":
+		raise ValueError(f"Expected a .zip file, got: {zip_path}")
+	output_dir.mkdir(parents=True, exist_ok=True)
+
+	output_root = output_dir.resolve()
+	with ZipFile(zip_path) as zf:
+		for member in zf.infolist():
+			# Skip directory entries; ZipFile handles them implicitly.
+			if member.filename.endswith("/"):
+				continue
+			dest = (output_dir / member.filename).resolve()
+			if output_root not in dest.parents and dest != output_root:
+				raise ValueError(f"Refusing to extract path outside output dir: {member.filename}")
+		zf.extractall(output_dir)
+
+	# Most SAFE zips contain a top-level <name>.SAFE directory.
+	safes = sorted([p for p in output_dir.iterdir() if p.is_dir() and p.name.endswith(".SAFE")])
+	if not safes:
+		raise ValueError(f"ZIP did not produce a .SAFE directory under: {output_dir}")
+	return safes[0]
 
 
 def find_band_paths_in_safe(
