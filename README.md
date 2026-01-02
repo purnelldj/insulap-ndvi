@@ -11,28 +11,20 @@ Build:
 docker build -t insulap-ndvi .
 ```
 
-Sanity check (imports only):
-
-```bash
-docker run --rm insulap-ndvi
-```
-
 ### Run NDVI inside the container (mount a local directory)
 
-This example mounts a local folder `./data` into the container at `/data`, finds the first Sentinel-2 `.SAFE` folder inside it, and writes outputs back into the same folder.
+This example mounts a local folder `./data/workDir` into the container at `/home/worker/workDir`, finds the first Sentinel-2 `.SAFE` folder inside it, and writes outputs back into the same folder.
 
 ```bash
-mkdir -p .data
+mkdir -p ./.data/workDir/inDir/s2prod
+scp ./FSP-WPS-INPUT.properties ./.data/workDir
 
-# Put a SAFE folder at: ./.data/S2A.....SAFE
+# Put a SAFE folder at: ./.data/workDir/inDir/s2prod/S2A.....SAFE
 # e.g., S2A_MSIL2A_20240728T105031_N0511_R051_T31UDQ_20240728T183146.SAFE
 
 docker run --rm \
-  -v "$PWD/.data:/data" \
-  insulap-ndvi \
-  python3 ndvi_calculator.py /data \
-    --bbox "445000,5405000,450000,5410000" \
-    --out-png /data/ndvi.png
+  -v "$PWD/.data/workDir:/home/worker/workDir" \
+  insulap-ndvi
 ```
 This crops over a 5km x 5km region in Paris, calculates NDVI and then saves the resuls to a png file.
 

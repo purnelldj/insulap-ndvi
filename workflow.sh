@@ -15,6 +15,6 @@ source /home/worker/workDir/FSTEP-WPS-INPUT.properties
 OUTPNGPATH=/home/worker/workDir/outDir/ndvipng/ndvi.png
 
 # run the script with the correct paths
-python3 ndvi_calculator.py ${S2PRODPATH}
+python3 ndvi_calculator.py ${S2PRODPATH} \
     --bbox ${BBOX} \
     --out-png ${OUTPNGPATH}
